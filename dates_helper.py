@@ -1,5 +1,4 @@
 from datetime import date, timedelta
-from tkinter.messagebox import NO
 from gevent import config
 import config
 
