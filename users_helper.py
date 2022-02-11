@@ -5,8 +5,6 @@ from operator import ge
 
 import os.path
 from re import U
-from tkinter import Y
-from turtle import up
 import config
 import connector_gapi
 import get_drive_files
@@ -220,3 +218,7 @@ def update_start_vocation_date(vocation_date,_LOGIN_OBJECT):
 
 def is_vocation_booked(_LOGIN_OBJECT):
   return _LOGIN_OBJECT[config.START_VOCATION_DATE]
+
+lgn = login("FM466952","1234")
+print(is_vocation_booked(lgn))
+print(get_all_fridays(lgn))
