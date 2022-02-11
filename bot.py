@@ -100,13 +100,10 @@ async def vacation_menu(message: types.Message):
 
 @dp.callback_query_handler(friday_callback.filter())
 async def get_vacation_cb(call: types.CallbackQuery, callback_data: dict):
-  try:
-    pyatnica = callback_data.get('friday_date')
-    user_data = users_helper.login(final_user_login, final_user_password)
-    users_helper.update_start_vocation_date(pyatnica, user_data)
-    await call.message.answer(f'Дата начала отпуска установлена на {pyatnica}!', reply_markup=control_kb)
-  except:
-    await call.message.answer('Тех. неполадки, пропишите команду /start')
+  pyatnica = callback_data.get('friday_date')
+  user_data = users_helper.login(final_user_login, final_user_password)
+  users_helper.update_start_vocation_date(pyatnica, user_data)
+  await call.message.answer(f'Дата начала отпуска установлена на {pyatnica}!', reply_markup=control_kb)
 
 
 @dp.message_handler(text='Справка ℹ️')
