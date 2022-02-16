@@ -83,12 +83,12 @@ def get_formatted_message(_LOGIN_OBJECT):
     print(e)
     return e
 
-def get_user_index(userObj, tableid=0):
+def get_user_index(userObj,tableid=0):
   try:
     user_index = None
     _table_dump = TABLE_DUMP
     for _uobj in range(0, len(_table_dump)):
-      if(userObj == _table_dump[_uobj]):
+      if(userObj[config.PASSPORT_ID] == _table_dump[_uobj][config.PASSPORT_ID]):
         user_index = _uobj+2
     return user_index
   except Exception as err:
@@ -124,7 +124,12 @@ def names_matched(doc_title,user_fullname):
 
 
 def google_drive_url(file_id):
-  return f"https://drive.google.com/file/d/{file_id}/view?usp=sharing"
+  try:
+    return f"https://drive.google.com/drive/u/0/folders/{file_id}/"
+  except Exception as err:
+    e = f"ERR: cannot convert google drive url {err}"
+    print(e)
+    return e
 
 def how_many_employes_on_this_vocation_date(google_date):
   counter = 0
@@ -133,23 +138,11 @@ def how_many_employes_on_this_vocation_date(google_date):
       counter += 1
   return counter
 
-def get_all_urls(_LOGIN_OBJECT):
+def get_folder_url(_LOGIN_OBJECT):
   try:
     user = _LOGIN_OBJECT
-    if user:
-      _name_surname = user[USER_FULLNAME]
-      print(f"getting urls for {_name_surname}")
-      passport = user[USER_PASSPORT_ID]
-      name_surname = f"{passport} {_name_surname}"
-      urls = []
-      files = get_drive_files.ls()
-      for doc in files:
-        doc_name = doc["name"]
-        doc_id = doc["id"]
-        if(names_matched(doc_name,name_surname)):
-          urls.append({doc_name: google_drive_url(doc_id)})
-      print(f"gettings urls done {name_surname}")
-      return urls
+    print(f"gettings urls done {_LOGIN_OBJECT}")
+    return google_drive_url(_LOGIN_OBJECT[config.FOLDER_ID])
   except Exception as err:
     e = f"Cannot get urls of documents: {err}"
     print(e)
@@ -218,7 +211,3 @@ def update_start_vocation_date(vocation_date,_LOGIN_OBJECT):
 
 def is_vocation_booked(_LOGIN_OBJECT):
   return _LOGIN_OBJECT[config.START_VOCATION_DATE]
-
-lgn = login("FM466952","1234")
-print(is_vocation_booked(lgn))
-print(get_all_fridays(lgn))
