@@ -108,7 +108,10 @@ async def get_vacation_cb(call: types.CallbackQuery, callback_data: dict):
 @dp.message_handler(text='Справка ℹ️')
 async def get_user_data(message: types.Message):
   try:
-    user_data = qdb.get(message.from_user.id)
+    user_data = users_helper.login(qdb.get(message.from_user.id)["LOGIN"],
+    qdb.get(message.from_user.id)["PASSWORD"])
+    qdb.save(user_data)
+    users_helper.REFRESH_LOGIN_OBJECT(user_data)
     msg = users_helper.get_formatted_message(user_data)
     await message.answer(msg, reply_markup=control_kb)
   except Exception as ex:
