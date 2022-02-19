@@ -47,8 +47,8 @@ def login(uname,pwd):
   try:
     tdump = connector_gapi.dump_table()
     for u in tdump:
-      if str(u["LOGIN"]) == uname:
-        if str(u["PASSWORD"]) == pwd:
+      if str(u["LOGIN"]) == str(uname):
+        if str(u["PASSWORD"]) == str(pwd):
           _LOGIN_OBJECT = u
           return _LOGIN_OBJECT
   except Exception as err:
@@ -88,6 +88,9 @@ def get_user_index(userObj,tableid=0):
     user_index = None
     _table_dump = TABLE_DUMP
     for _uobj in range(0, len(_table_dump)):
+      print("----getting index condition")
+      print(f"checking index for {userObj}")
+      print(f"{userObj[config.PASSPORT_ID]} == {_table_dump[_uobj][config.PASSPORT_ID]}")
       if(userObj[config.PASSPORT_ID] == _table_dump[_uobj][config.PASSPORT_ID]):
         user_index = _uobj+2
     return user_index

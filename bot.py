@@ -10,7 +10,6 @@ from math import ceil
 from callbacks import friday_callback
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-
 storage=MemoryStorage()
 API_TOKEN = TOKEN
 bot = Bot(token=API_TOKEN)
@@ -63,12 +62,16 @@ async def process_get_password(message: types.Message, state: FSMContext):
     await state.finish()
   else:
     await state.finish()
-    await bot.send_message(message.from_user.id, 'Произошла ошибка')
+    await bot.send_message(message.from_user.id, 'Произошла ошибка, проверьте данные для авторизации.')
 
 
 @dp.message_handler(text='Установить дату отпуска ✈️')
 async def vacation_menu(message: types.Message):
-  user_data = qdb.get(message.from_user.id)
+  _user_data = qdb.get(message.from_user.id)
+  print(f"login({_user_data['LOGIN']},{_user_data['PASSWORD']})")
+  user_data = users_helper.login(_user_data["LOGIN"], _user_data["PASSWORD"])
+  print(f"user_data = {user_data}")
+  qdb.save(message.from_user.id, user_data)
   print(user_data)
   try:
     if(len(users_helper.is_vocation_booked(user_data)) <= 1):
@@ -83,7 +86,7 @@ async def vacation_menu(message: types.Message):
         await message.answer('Доступные пятницы по датам:', reply_markup=aboba_kb)
       except Exception as ex:
         print(ex)
-        await message.answer('Прозошла ошибка с выводом пятниц, обратитесь в тех. поддержку.')
+        await message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
     else:
       await message.answer('Вы уже зарезервировали отпуск :(')
   except Exception as ex:
@@ -96,27 +99,33 @@ async def get_vacation_cb(call: types.CallbackQuery, callback_data: dict):
   try:
     pyatnica = callback_data.get('friday_date')
     users_helper.REFRESH_TABLE_DUMP()
-    user_data = qdb.get(call.from_user.id)
-    users_helper.REFRESH_LOGIN_OBJECT(user_data)
-    users_helper.update_start_vocation_date(pyatnica, user_data)
+    _user_data = qdb.get(call.from_user.id)
+    print(f"login({_user_data['LOGIN']},{_user_data['PASSWORD']})")
+    user_data = users_helper.login(_user_data["LOGIN"], _user_data["PASSWORD"])
+    print(f"user_data = {user_data}")
+    qdb.save(call.from_user.id, user_data)
+    print(f"all users: {qdb.users}")
+    print(f"qdb getting : {qdb.get(call.from_user.id)}")
+    users_helper.update_start_vocation_date(pyatnica, qdb.get(call.from_user.id))
     await call.message.answer(f'Отправлен запрос на установку даты отпуска на {pyatnica}!', reply_markup=control_kb)
+
   except Exception as ex:
     print(ex)
-    await call.message.answer('Произошла ошибка.')
+    await call.message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
 
 
 @dp.message_handler(text='Справка ℹ️')
 async def get_user_data(message: types.Message):
   try:
-    user_data = users_helper.login(qdb.get(message.from_user.id)["LOGIN"],
-    qdb.get(message.from_user.id)["PASSWORD"])
-    qdb.save(user_data)
-    users_helper.REFRESH_LOGIN_OBJECT(user_data)
+    _user_data = qdb.get(message.from_user.id)
+    user_data = users_helper.login(_user_data["LOGIN"], _user_data["PASSWORD"])
+    print(f"user_data = {user_data}")
+    qdb.save(message.from_user.id, user_data)
     msg = users_helper.get_formatted_message(user_data)
     await message.answer(msg, reply_markup=control_kb)
   except Exception as ex:
     print(ex)
-    await message.answer('Тех. неполадки, пропишите команду /start')
+    await message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
 
 
 @dp.message_handler(text='Мои документы 📚')
@@ -131,7 +140,7 @@ async def get_user_documents(message: types.Message):
     await message.answer('Результат:', reply_markup=document_kb)
   except Exception as err:
     print(err)
-    await message.answer('Тех. неполадки, свяжитесь с администрацией!')
+    await message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
 
 
 @dp.message_handler()
