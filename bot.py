@@ -1,12 +1,13 @@
-from webbrowser import get
 import users_helper
+import connector_gapi
+import config
 import qdb
 from aiogram import Bot, Dispatcher, executor, types
 from tg_token import TOKEN
 from keyboard import *
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from math import ceil
+from aiogram.types import ParseMode
 from callbacks import friday_callback
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
@@ -77,12 +78,14 @@ async def vacation_menu(message: types.Message):
     if(len(users_helper.is_vocation_booked(user_data)) <= 1):
       try:
         aboba_kb = InlineKeyboardMarkup(row_width=3)
+        banned_fridays = connector_gapi.dump_table(config.BAN_FRIDAYS_ID)
         for item in users_helper.get_all_fridays(user_data):
-          button = InlineKeyboardButton(
-            text=item,
-            callback_data=friday_callback.new(friday_date=item)
-          )
-          aboba_kb.insert(button)
+          if users_helper.is_valid_range(item, user_data) and not users_helper.is_friday_banned(item, banned_fridays):
+            button = InlineKeyboardButton(
+              text=item,
+              callback_data=friday_callback.new(friday_date=item)
+            )
+            aboba_kb.insert(button)
         await message.answer('Доступные пятницы по датам:', reply_markup=aboba_kb)
       except Exception as ex:
         print(ex)
@@ -122,7 +125,7 @@ async def get_user_data(message: types.Message):
     print(f"user_data = {user_data}")
     qdb.save(message.from_user.id, user_data)
     msg = users_helper.get_formatted_message(user_data)
-    await message.answer(msg, reply_markup=control_kb)
+    await message.answer(msg, reply_markup=control_kb, parse_mode=ParseMode.MARKDOWN)
   except Exception as ex:
     print(ex)
     await message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')

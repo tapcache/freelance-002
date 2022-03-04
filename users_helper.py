@@ -83,6 +83,17 @@ def get_formatted_message(_LOGIN_OBJECT):
     print(e)
     return e
 
+def is_friday_banned(friday_to_check,dump_fridays):
+  try:
+    all_fridays = []
+    for friday in dump_fridays:
+      all_fridays.append(friday[config.BAN_FRIDAYS_KEY])
+    return friday_to_check in all_fridays
+  except Exception as err:
+    e = f"ERR: cannot check banned fridays: {err}"
+    print(e)
+    return e
+
 def get_user_index(userObj,tableid=0):
   try:
     user_index = None
@@ -164,7 +175,7 @@ def is_valid_range(vocation_date,_LOGIN_OBJECT):
     if dates_helper.is_friday(vocation_date):
       if visa_diff >= 14:
         if contract_diff >= 90:
-          if today_diff > 0:
+          if today_diff >= 14:
             if dates_helper.years_matched(today,vocation_date):
               return True
             else:
@@ -199,7 +210,7 @@ def get_all_fridays(_LOGIN_OBJECT):
 
 def update_start_vocation_date(vocation_date,_LOGIN_OBJECT):
   try:
-    if how_many_employes_on_this_vocation_date(vocation_date) <= MAX_EMPLOYES_PER_QUOTE:
+    if how_many_employes_on_this_vocation_date(vocation_date) <= MAX_EMPLOYES_PER_QUOTE:  
       u = _LOGIN_OBJECT
       user_index = get_user_index(u)
       cell_id = f"{START_VOCATION_CELL}{user_index}"

@@ -7,8 +7,8 @@ BOT_FOLDER_ID_PROD="1uPd03Q0qqLGBVlJCaZGNe5DNz-gv_ci1" # ROOT FOLDER OF ALL DATA
 TABLE_STARTS_AT="A"
 TABLE_ENDS_AT="T"
 TABLE_RANGE=f"{TABLE_STARTS_AT}:{TABLE_ENDS_AT}"
-
-
+BAN_FRIDAYS_ID=1
+BAN_FRIDAYS_KEY="BANNED FRIDAYS"
 # Програмное 
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 TOKEN_FILE = "token.json"
@@ -64,7 +64,7 @@ DAYS_IN_YEAR=365
 #####
 # КОЛИЧЕСТВО ЛЮДЕЙ НА ОДНУ КВОТУ
 #####
-MAX_EMPLOYES_PER_QUOTE=10
+MAX_EMPLOYES_PER_QUOTE=7
 
 
 DAY_G = 1
