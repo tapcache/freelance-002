@@ -1,4 +1,5 @@
 
-from aiogram.utils.callback_data import CallbackData
+from aiogram.dispatcher.filters.callback_data import CallbackData
 
-friday_callback = CallbackData("date", "friday_date")
+class FridayCallback(CallbackData, prefix="friday"):
+    date: str

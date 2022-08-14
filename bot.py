@@ -1,73 +1,97 @@
+import asyncio
+from typing import Callable, Dict, Any, Awaitable
 import users_helper
 import connector_gapi
 import config
 import qdb
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, Router, BaseMiddleware
 from tg_token import TOKEN
 from keyboard import *
-from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.fsm.context import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import ParseMode
-from callbacks import friday_callback
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.types import Message, CallbackQuery
+from callbacks import FridayCallback
+from aiogram.dispatcher.fsm.storage.memory import MemoryStorage
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-storage=MemoryStorage()
+storage = MemoryStorage()
 API_TOKEN = TOKEN
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot, storage=storage)
+bot = Bot(token=API_TOKEN, parse_mode="HTML")
+dp = Dispatcher(storage=storage)
+scheduler = AsyncIOScheduler()  
+messages = []
 
+class messageIdPickUp(BaseMiddleware):
+    async def __call__(self, handler: Callable[[Message, Dict[str, Any]], Awaitable[Any]], event: Message, data: Dict[str, Any]) -> Any:
+        messages.append(event.message_id)
+        try:
+            if scheduler.get_job('clearing'):
+                scheduler.remove_job('clearing')
+                scheduler.add_job(clearing, trigger="interval", hours=2, args=(event,), id='clearing')
+                scheduler.start()
+            else:
+                scheduler.add_job(clearing, trigger="interval", hours=2, args=(event,), id='clearing')
+                scheduler.start()
+        except Exception:
+            pass
+        return await handler(event, data)
+
+async def clearing(message: Message):
+    print(messages)
+    for msg in messages:
+        await bot.delete_message(message.chat.id, msg)
+    messages.clear()
+    scheduler.remove_all_jobs()
+
+router = Router()
+router.message.outer_middleware(messageIdPickUp())
 
 class GetUserData(StatesGroup):
   usr_login = State()
   usr_password = State()
 
-
 class GetVacationData(StatesGroup):
   start_vacation_data = State()
   end_vacation_data = State()
 
+@router.message(commands='start')
+async def greeting(message: Message):
+  greet = await bot.send_message(message.chat.id, 'Приветствую!', reply_markup=start_kb)
+  messages.append(greet.message_id)
 
-@dp.message_handler(commands='start')
-async def greeting(message: types.Message):
-  await message.answer('Приветствую!', reply_markup=start_kb)
+@router.message(text='Логин 🔑')
+async def get_login(message: Message, state: FSMContext):
+  enter_login = await bot.send_message(message.chat.id, 'Введите ваш логин...')
+  await state.set_state(GetUserData.usr_login)
+  messages.append(enter_login.message_id)
 
+@router.message(GetUserData.usr_login)
+async def process_get_login(message: Message, state: FSMContext):
+  await state.update_data(usr_login=message.text)
+  await state.set_state(GetUserData.usr_password)
+  enter_password = await bot.send_message(message.chat.id, 'Введите ваш пароль...')
+  messages.append(enter_password.message_id)
 
-@dp.message_handler(text='Логин 🔑')
-async def get_login(message: types.Message):
-  await GetUserData.usr_login.set()
-  await message.answer('Введите ваш логин...')
+@router.message(state=GetUserData.usr_password)
+async def process_get_password(message: Message, state: FSMContext):
+  data = await state.update_data(usr_password=message.text)
+  await state.clear()
+  result = await final_login(message.chat.id, message.from_user.id, data=data)
+  messages.append(result.message_id)
 
-
-@dp.message_handler(state=GetUserData.usr_login)
-async def process_get_login(message: types.Message, state: FSMContext):
-  async with state.proxy() as data:
-    data['usr_login'] = message.text
-    global final_user_login
-    final_user_login = data['usr_login']
-  await GetUserData.usr_password.set()
-  await message.answer('Введите ваш пароль...')
-
-
-@dp.message_handler(state=GetUserData.usr_password)
-async def process_get_password(message: types.Message, state: FSMContext):
-  async with state.proxy() as data:
-    data['usr_password'] = message.text
-  global final_user_password
-  final_user_password = data['usr_password']
-  user_data = users_helper.login(final_user_login, final_user_password)
-  qdb.save(message.from_user.id, user_data)
+async def final_login(chat_id, usr_id, data: Dict):
+  user_data = users_helper.login(data.get('usr_login'), data.get('usr_password'))
+  qdb.save(usr_id, user_data)
   if(user_data):
     msg = users_helper.get_formatted_message(user_data)
-    await message.answer(msg, reply_markup=control_kb)
-    print(qdb.get(message.from_user.id))
-    await state.finish()
+    print(qdb.get(usr_id))
+    return await bot.send_message(chat_id, msg, reply_markup=control_kb)
   else:
-    await state.finish()
-    await bot.send_message(message.from_user.id, 'Произошла ошибка, проверьте данные для авторизации.')
-
-
-@dp.message_handler(text='Установить дату отпуска ✈️')
-async def vacation_menu(message: types.Message):
+    return await bot.send_message(usr_id, 'Произошла ошибка, проверьте данные для авторизации.')
+    
+@router.message(text='Установить дату отпуска ✈️')
+async def vacation_menu(message: Message):
   _user_data = qdb.get(message.from_user.id)
   print(f"login({_user_data['LOGIN']},{_user_data['PASSWORD']})")
   user_data = users_helper.login(_user_data["LOGIN"], _user_data["PASSWORD"])
@@ -77,30 +101,33 @@ async def vacation_menu(message: types.Message):
   try:
     if(len(users_helper.is_vocation_booked(user_data)) <= 1):
       try:
-        aboba_kb = InlineKeyboardMarkup(row_width=3)
         banned_fridays = connector_gapi.dump_table(config.BAN_FRIDAYS_ID)
+        builder = InlineKeyboardBuilder()
         for item in users_helper.get_all_fridays(user_data):
           if users_helper.is_valid_range(item, user_data) and not users_helper.is_friday_banned(item, banned_fridays):
-            button = InlineKeyboardButton(
+            builder.button(
               text=item,
-              callback_data=friday_callback.new(friday_date=item)
+              callback_data=FridayCallback(date=item)
             )
-            aboba_kb.insert(button)
-        await message.answer('Доступные пятницы по датам:', reply_markup=aboba_kb)
+            builder.adjust(3)
+        available_fridays = await bot.send_message(message.chat.id, 'Доступные пятницы по датам:', reply_markup=builder.as_markup())
+        messages.append(available_fridays.message_id)
       except Exception as ex:
         print(ex)
-        await message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+        errorchik = await bot.send_message(message.chat.id, 'Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+        messages.append(errorchik.message_id)
     else:
-      await message.answer('Вы уже зарезервировали отпуск :(')
+      no_vacation = await bot.send_message(message.chat.id, 'Вы уже зарезервировали отпуск :(')
+      messages.append(no_vacation.message_id)
   except Exception as ex:
     print(ex)
-    await message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+    error_msg = await bot.send_message(message.chat.id, 'Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+    messages.append(error_msg.message_id)
   
-
-@dp.callback_query_handler(friday_callback.filter())
-async def get_vacation_cb(call: types.CallbackQuery, callback_data: dict):
+@router.callback_query(FridayCallback.filter())
+async def get_vacation_cb(call: CallbackQuery, callback_data: FridayCallback):
   try:
-    pyatnica = callback_data.get('friday_date')
+    pyatnica = callback_data.date
     users_helper.REFRESH_TABLE_DUMP()
     _user_data = qdb.get(call.from_user.id)
     print(f"login({_user_data['LOGIN']},{_user_data['PASSWORD']})")
@@ -110,45 +137,51 @@ async def get_vacation_cb(call: types.CallbackQuery, callback_data: dict):
     print(f"all users: {qdb.users}")
     print(f"qdb getting : {qdb.get(call.from_user.id)}")
     users_helper.update_start_vocation_date(pyatnica, qdb.get(call.from_user.id))
-    await call.message.answer(f'Отправлен запрос на установку даты отпуска на {pyatnica}!', reply_markup=control_kb)
+    success_request = await bot.send_message(call.from_user.id, f'Отправлен запрос на установку даты отпуска на {pyatnica}!', reply_markup=control_kb)
+    messages.append(success_request.message_id)
 
   except Exception as ex:
     print(ex)
-    await call.message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+    error_msg = await bot.send_message(call.from_user.id, 'Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+    messages.append(error_msg.message_id)
 
-
-@dp.message_handler(text='Справка ℹ️')
-async def get_user_data(message: types.Message):
+@router.message(text='Справка ℹ️')
+async def get_user_data(message: Message):
   try:
     _user_data = qdb.get(message.from_user.id)
     user_data = users_helper.login(_user_data["LOGIN"], _user_data["PASSWORD"])
     print(f"user_data = {user_data}")
     qdb.save(message.from_user.id, user_data)
     msg = users_helper.get_formatted_message(user_data)
-    await message.answer(msg, reply_markup=control_kb, parse_mode=ParseMode.MARKDOWN)
+    await asyncio.sleep(0.3)
+    control_msg = await bot.send_message(message.chat.id, msg, reply_markup=control_kb)
+    messages.append(control_msg.message_id)
   except Exception as ex:
     print(ex)
-    await message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+    error_msg = await bot.send_message(message.chat.id, 'Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+    messages.append(error_msg.message_id)
 
-
-@dp.message_handler(text='Мои документы 📚')
-async def get_user_documents(message: types.Message):
+@router.message(text='Мои документы 📚')
+async def get_user_documents(message: Message):
   try:
-    document_kb = InlineKeyboardMarkup()
-    document_btn = InlineKeyboardButton(
+    document_kb = InlineKeyboardBuilder()
+    document_kb.button(
       text='Ваши документы', 
       url = users_helper.get_folder_url(qdb.get(message.from_user.id))
-      )
-    document_kb.add(document_btn)
-    await message.answer('Результат:', reply_markup=document_kb)
+    )
+    answer = await bot.send_message(message.chat.id, 'Результат:', reply_markup=document_kb.as_markup())
+    messages.append(answer.message_id)
+    
   except Exception as err:
     print(err)
-    await message.answer('Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+    error_msg = await bot.send_message(message.chat.id, 'Прозошла ошибка, обратитесь в тех. поддержку или администратору напрямую.')
+    messages.append(error_msg.message_id)
 
-
-@dp.message_handler()
-async def unknown_info(message: types.Message):
-    await message.answer("Что-то я вас не понял 0_o")
+@router.message()
+async def unknown_info(message: Message):
+    unkown = await bot.send_message(message.chat.id, "Что-то я вас не понял 0_o")
+    messages.append(unkown.message_id)
 
 if __name__ == "__main__":
-    executor.start_polling(dp, skip_updates=True)
+    dp.include_router(router)
+    dp.run_polling(bot)
